@@ -1,16 +1,35 @@
 package platform
 
-type Douyu struct {
+import (
+	"danmu/utils/log"
+	"fmt"
+)
+
+type DouyuClient struct {
 	roomId    int
 	originUrl string
 }
 
-var douyuClient Douyu
+var douyuClient DouyuClient
 
-func New(url string) {
+func Douyu(url string) {
+	log.Info(url)
+
 	if douyuClient.originUrl == "" {
-		douyuClient = Douyu{
+		fmt.Println(douyuClient.originUrl)
+		douyuClient = DouyuClient{
 			originUrl: url,
+			roomId:    0,
 		}
+		douyuClient.getRoomId()
 	}
+
+}
+
+/**
+ * 获取斗鱼RoomID
+ */
+func (client *DouyuClient) getRoomId() {
+	// pageHtml := net.Get(client.originUrl)
+
 }

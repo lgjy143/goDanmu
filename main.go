@@ -2,10 +2,13 @@ package main
 
 import (
 	"danmu/config"
-	"danmu/util/log"
+	"danmu/platform"
+	"danmu/utils"
+	"danmu/utils/log"
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -28,7 +31,7 @@ func main() {
 
 	if config.Version {
 		fmt.Println("Current Version ", config.VERSION)
-		os.Exit(1)
+		return
 	}
 
 	if config.Env != "" {
@@ -37,7 +40,7 @@ func main() {
 
 	if config.Debug != "" {
 		log.SetType(log.FileLog, map[string]string{"fileName": config.Debug})
-		log.SetLevel(log.LevelError)
+		log.SetLevel(log.LevelInfo)
 	}
 
 	conf, err := ini.LoadFile(confFile)
@@ -47,9 +50,20 @@ func main() {
 	}
 
 	// platform url
-	if len(os.Args) > 2 {
-		url := os.Args[len(os.Args)-1]
-		fmt.Printf("%v", url)
+	if len(os.Args) > 1 {
+		platformURL := os.Args[len(os.Args)-1]
+		u, err := url.ParseRequestURI(platformURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		host := utils.Domain(u.Host)
+		log.Info(host)
+
+		switch host {
+		case "Douyu":
+			platform.Douyu(platformURL)
+		}
+
 	}
 
 }

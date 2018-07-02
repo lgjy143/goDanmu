@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func Get(url string) []byte {
+func Get(url string) string {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
@@ -16,5 +16,5 @@ func Get(url string) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return robots
+	return string(robots)
 }
