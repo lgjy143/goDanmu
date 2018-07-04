@@ -2,7 +2,7 @@ package main
 
 import (
 	"danmu/config"
-	"danmu/platform"
+	"danmu/platform/douyu"
 	"danmu/utils"
 	"danmu/utils/log"
 	"flag"
@@ -61,7 +61,7 @@ func main() {
 
 		switch host {
 		case "Douyu":
-			platform.Douyu(platformURL)
+			douyu.Douyu(platformURL)
 		}
 
 	}
