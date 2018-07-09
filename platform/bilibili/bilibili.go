@@ -1,22 +1,20 @@
-package douyu
+package bilibili
 
 import (
 	"danmu/utils"
 	"danmu/utils/log"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"regexp"
 	"sync"
-	"time"
 
 	"github.com/bitly/go-simplejson"
 )
 
-type DouyuClient struct {
+type BiliClient struct {
 	roomId     int
 	roomName   string
 	showId     int
@@ -30,12 +28,12 @@ type DouyuClient struct {
 	closeFlag  chan bool
 }
 
-var douyuClient DouyuClient
+var douyuClient BiliClient
 
 func Douyu(url string) {
 	if douyuClient.originUrl == "" {
 		fmt.Println(douyuClient.originUrl)
-		douyuClient = DouyuClient{
+		douyuClient = BiliClient{
 			originUrl: url,
 			roomId:    0,
 		}
@@ -53,7 +51,7 @@ func Douyu(url string) {
 /**
  * 获取斗鱼房间信息
  */
-func (client *DouyuClient) getClientInfo(roomId int) {
+func (client *BiliClient) getClientInfo(roomId int) {
 	pageHTML := utils.Get(client.originUrl)
 	reRoom := regexp.MustCompile(`var\s\$ROOM\s=\s({.*});`)
 	if roomArr := reRoom.FindStringSubmatch(pageHTML); len(roomArr) < 2 {
@@ -93,19 +91,10 @@ func (client *DouyuClient) getClientInfo(roomId int) {
 	client.serverPort, _ = server.Get("port").String()
 }
 
-func (client *DouyuClient) Close() error {
-	if _, ok := <-client.closeFlag; ok {
-		close(client.closeFlag)
-		return nil
-	} else {
-		return errors.New("Client Have Closed")
-	}
-}
-
 /**
  * 与斗鱼弹幕服务器建立连接
  */
-func (client *DouyuClient) Connect() error {
+func (client *BiliClient) Connect() error {
 	var danmuServerStr = "openbarrage.douyutv.com:8601"
 	conn, err := net.Dial("tcp", danmuServerStr)
 	if err != nil {
@@ -114,12 +103,10 @@ func (client *DouyuClient) Connect() error {
 
 	client.conn = conn
 	// join Room
-	client.joinRoom()
+	// client.joinRoom()
 	client.wg.Add(2)
 	// heart
-	go client.heartbeat()
 	// chatMsg
-	go client.chatMsg()
 	client.wg.Wait()
 	log.Infof("%s connected.", danmuServerStr)
 	return nil
@@ -128,7 +115,7 @@ func (client *DouyuClient) Connect() error {
 /**
  * Read data from connection and process
  */
-func (client *DouyuClient) ReceiveMsg() ([]byte, int, error) {
+func (client *BiliClient) ReceiveMsg() ([]byte, int, error) {
 	buf := make([]byte, 512)
 	if _, err := io.ReadFull(client.conn, buf[:12]); err != nil {
 		return buf, 0, err
@@ -158,97 +145,4 @@ func (client *DouyuClient) ReceiveMsg() ([]byte, int, error) {
 	}
 	// exclude ENDING
 	return buf[:cl-1], int(code), nil
-}
-
-/**
- * 心跳检测
- */
-func (client *DouyuClient) heartbeat() {
-	defer client.wg.Done()
-	tick := time.Tick(45 * time.Second)
-loop:
-	for {
-		select {
-		case _, ok := <-client.closeFlag:
-			if !ok {
-				break loop
-			}
-		case <-tick:
-			heartbeatMsg := NewMessage(nil, MESSAGE_TO_SERVER).
-				SetField("type", "keeplive").
-				SetField("tick", time.Now().Unix())
-			fmt.Println("heart")
-			_, err := client.conn.Write(heartbeatMsg.Encode())
-			if err != nil {
-				log.Error("heartbeat failed, " + err.Error())
-			}
-		}
-	}
-}
-
-func (client *DouyuClient) chatMsg() {
-	defer client.wg.Done()
-loop:
-	for {
-		select {
-		case _, ok := <-client.closeFlag:
-			if !ok {
-				break loop
-			}
-		default:
-			b, code, err := client.ReceiveMsg()
-			if err != nil {
-				log.Error(err, code)
-				close(client.closeFlag)
-				break loop
-			}
-
-			// analize message
-			msg := NewMessage(nil, MESSAGE_FROM_SERVER).Decode(b, code)
-			if msg.GetStringField("type") == "chatmsg" {
-				log.Infof("type %s, content %s", msg.GetStringField("type"), msg.GetStringField("txt"))
-			}
-		}
-	}
-}
-
-/**
- * 加入斗鱼弹幕房间
- */
-func (client *DouyuClient) joinRoom() error {
-	var room = client.roomId
-	loginMessage := NewMessage(nil, MESSAGE_TO_SERVER).
-		SetField("type", MSG_TYPE_LOGINREQ).
-		SetField("roomid", room)
-
-	log.Infof("joining room %d...", room)
-	if _, err := client.conn.Write(loginMessage.Encode()); err != nil {
-		return err
-	}
-
-	b, code, err := client.ReceiveMsg()
-	if err != nil {
-		return err
-	}
-
-	// TODO assert(code == MESSAGE_FROM_SERVER)
-	log.Infof("room %d joined", room)
-	loginRes := NewMessage(nil, MESSAGE_FROM_SERVER).Decode(b, code)
-	// isLive := loginRes.GetStringField("live_stat")
-	// if isLive == 0 {
-	log.Infof("room %d live status %s", room, loginRes.GetStringField("live_stat"))
-	// }
-
-	joinMessage := NewMessage(nil, MESSAGE_TO_SERVER).
-		SetField("type", "joingroup").
-		SetField("rid", room).
-		SetField("gid", "-9999")
-
-	log.Infof("joining group %d...", -9999)
-	_, err = client.conn.Write(joinMessage.Encode())
-	if err != nil {
-		return err
-	}
-	log.Infof("group %d joined", -9999)
-	return nil
 }

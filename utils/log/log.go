@@ -31,7 +31,7 @@ type LevelLog struct {
 }
 
 var Log LevelLog
-var LogFormat int = log.Ldate | log.Ltime | log.Lshortfile
+var LogFormat int = log.Ldate | log.Ltime
 
 func init() {
 	Log.Logger = log.New(os.Stderr, "", LogFormat)
