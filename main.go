@@ -2,6 +2,7 @@ package main
 
 import (
 	"danmu/config"
+	"danmu/platform/bilibili"
 	"danmu/platform/douyu"
 	"danmu/utils"
 	"danmu/utils/log"
@@ -62,6 +63,8 @@ func main() {
 		switch host {
 		case "Douyu":
 			douyu.Douyu(platformURL)
+		case "Bilibili":
+			bilibili.Bilibili(platformURL)
 		}
 
 	}
