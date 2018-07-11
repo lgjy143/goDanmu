@@ -17,6 +17,13 @@ const (
 	danmuMSG     = "DANMU_MSG"
 	danmuGIFT    = "DANMU_GIFT"
 	danmuWelcome = "WELCOME"
+	DANMU_MSG    = "DANMU_MSG"
+	// 停播
+	LIVE_OFF = 0
+	// 直播
+	LIVE_ON = 1
+	// 轮播
+	LiVE_ROTATE = 2
 )
 
 type Message struct {
@@ -35,9 +42,9 @@ func NewHandshakeMessage(roomid, uid int) *Message {
 
 }
 
-func NewHeartbeatMessage(room, uid int) *Message {
+func NewHeartbeatMessage() *Message {
 
-	data := fmt.Sprintf(`{"roomid":%d,"uid":%d}`, room, uid)
+	data := ""
 	message := &Message{
 		body:     []byte(data),
 		bodyType: 2,

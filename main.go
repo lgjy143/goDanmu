@@ -21,7 +21,7 @@ var wg sync.WaitGroup
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	flag.BoolVar(&config.Version, "v", false, "Show version")
+	flag.BoolVar(&config.Version, "version", false, "Show version")
 	flag.StringVar(&config.Debug, "d", "", "Debug mode")
 	flag.StringVar(&config.Env, "c", "", "Env file")
 }

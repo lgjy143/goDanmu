@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"regexp"
 	"sync"
 	"time"
 
 	simplejson "github.com/bitly/go-simplejson"
+	"github.com/golang/glog"
 )
 
 type BiliClient struct {
@@ -34,7 +36,6 @@ var biliClient BiliClient
 
 func Bilibili(url string) {
 	if biliClient.originURL == "" {
-		fmt.Println(biliClient.originURL)
 		biliClient = BiliClient{
 			originURL: url,
 			roomID:    0,
@@ -49,7 +50,7 @@ func Bilibili(url string) {
  */
 func (client *BiliClient) getClientInfo() {
 	var roomInitAddr = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"
-	reURL := regexp.MustCompile(`.*\/(\d+)$`)
+	reURL := regexp.MustCompile(`.*\/(\d+)[?]*.*$`)
 	roomArr := reURL.FindStringSubmatch(client.originURL)
 	if len(roomArr) == 2 {
 		roomInitHTML := utils.Get(fmt.Sprintf(roomInitAddr, roomArr[1]))
@@ -57,7 +58,7 @@ func (client *BiliClient) getClientInfo() {
 		roomJSON, err := simplejson.NewJson([]byte(roomInitHTML))
 
 		if err != nil {
-			log.Fatal(err.Error())
+			glog.Fatal(err.Error())
 		}
 
 		if resOk, _ := roomJSON.Get("msg").String(); resOk == "ok" {
@@ -65,14 +66,20 @@ func (client *BiliClient) getClientInfo() {
 			client.roomID, _ = roomData.Get("room_id").Int()
 			client.ownerUID, _ = roomData.Get("uid").Int()
 			client.liveStatus, _ = roomData.Get("live_status").Int()
+			glog.Infof("Room Live Status %d", client.liveStatus)
 		} else {
-			log.Fatal("Room Init Failed")
+			glog.Fatal("Room Init Failed")
 		}
 
-		log.Info("Get Barrage Servers Info")
+		if client.liveStatus == LIVE_OFF {
+			glog.Info("Room is Closed")
+			return
+		}
+
+		glog.Info("Get Barrage Servers Info")
 		dmIP, dmPort, err := getBarrageServer(client.roomID)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 		client.serverIP = dmIP
 		client.serverPort = dmPort
@@ -102,21 +109,25 @@ func getBarrageServer(roomID int) (string, string, error) {
  */
 func (client *BiliClient) Connect() error {
 	var danmuServerStr = client.serverIP + ":" + client.serverPort
-	conn, err := net.DialTimeout("tcp", danmuServerStr, 5*time.Second)
+	conn, err := net.Dial("tcp", danmuServerStr)
 	if err != nil {
 		return err
 	}
-	log.Info("Connect Success")
+	glog.Infof("%s connected.", danmuServerStr)
+
 	client.conn = conn
+	randUid := rand.Intn(200000) + 100000
 	// hand shake
-	client.conn.Write(NewHandshakeMessage(client.roomID, int(19052911)).Encode())
+	client.conn.Write(NewHandshakeMessage(client.roomID, randUid).Encode())
+	glog.Info("Connect Handshake")
+
 	client.wg.Add(2)
 	// heart
 	go client.heartbeat()
+	// go client.reHandShake()
 	// chatMsg
 	go client.chatMsg()
 	client.wg.Wait()
-	log.Infof("%s connected.", danmuServerStr)
 	return nil
 }
 
@@ -125,7 +136,7 @@ func (client *BiliClient) Connect() error {
  */
 func (client *BiliClient) heartbeat() {
 	defer client.wg.Done()
-	tick := time.Tick(45 * time.Second)
+	tick := time.Tick(5 * time.Second)
 loop:
 	for {
 		select {
@@ -134,11 +145,49 @@ loop:
 				break loop
 			}
 		case <-tick:
-			heartbeatMsg := NewHeartbeatMessage(client.roomID, client.ownerUID)
+			heartbeatMsg := NewHeartbeatMessage()
 			fmt.Println("heart")
 			_, err := client.conn.Write(heartbeatMsg.Encode())
 			if err != nil {
 				log.Error("heartbeat failed, " + err.Error())
+			}
+		}
+	}
+}
+
+func (client *BiliClient) reConnect() error {
+	var danmuServerStr = client.serverIP + ":" + client.serverPort
+	conn, err := net.Dial("tcp", danmuServerStr)
+	if err != nil {
+		return err
+	}
+	glog.Infof("%s reconnected.", danmuServerStr)
+
+	client.conn = conn
+	randUid := rand.Intn(200000) + 100000
+	// hand shake
+	client.conn.Write(NewHandshakeMessage(client.roomID, randUid).Encode())
+	glog.Info("ReConnect Handshake")
+	return nil
+}
+
+func (client *BiliClient) reHandShake() {
+	defer client.wg.Done()
+	tick := time.Tick(50 * time.Second)
+loop:
+	for {
+		select {
+		case _, ok := <-client.closeFlag:
+			if !ok {
+				break loop
+			}
+		case <-tick:
+			randUID := rand.Intn(200000) + 100000
+			// hand shake
+			fmt.Println("re handshake")
+			_, err := client.conn.Write(NewHandshakeMessage(client.roomID, randUID).Encode())
+			if err != nil {
+				log.Error("rehandshake failed, " + err.Error())
 			}
 		}
 	}
@@ -156,21 +205,39 @@ loop:
 		default:
 			b, code, err := client.ReceiveMsg()
 			if err != nil {
-				log.Error(err, code)
-				close(client.closeFlag)
-				break loop
+				glog.Error(err, code)
+				if code == -1 {
+					client.reConnect()
+				} else {
+					close(client.closeFlag)
+					break loop
+				}
 			}
 
-			fmt.Println(string(b))
-			// var jm map[string]interface{}
-			// if err := json.Unmarshal(b, &jm); err != nil {
-			// 	return nil, err
-			// }
-			// msgJSON, err = simplejson.NewJson(b)
-			// cmd, err := msgJSON.Get("cmd").String()
-			// if err == nil && cmd == danmuMSG {
-			// 	fmt.Println(string(b))
-			// }
+			switch code {
+			case 3:
+				glog.Info("heartbeat ok")
+				continue
+			case 8:
+				glog.Info("handshake ok")
+				continue
+			case 5:
+				jsonStr := string(b)
+				// log.Info(jsonStr)
+				reCMD := regexp.MustCompile(`.*"cmd":"(\w+)"`)
+				cmdArr := reCMD.FindStringSubmatch(jsonStr)
+				if len(cmdArr) == 2 {
+					fmt.Println(cmdArr[1])
+					glog.Info(cmdArr[1])
+				}
+				reContent := regexp.MustCompile(`\],"(.*)",\[`)
+				contentArr := reContent.FindStringSubmatch(jsonStr)
+				if len(contentArr) == 2 {
+					fmt.Println(contentArr[1])
+					glog.Info(contentArr[1])
+				}
+				continue
+			}
 
 			// analize message
 		}
