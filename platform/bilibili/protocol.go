@@ -7,17 +7,16 @@ import (
 )
 
 const (
-	HEADER_LENGTH = 16 // in bytes
-	DEVICE_TYPE   = 1
-	DEVICE        = 1
+	headerLENGTH = 16 // in bytes
+	deviceTYPE   = 1
+	device       = 1
 )
 
 const (
 	// cmd types
-	DANMU_MSG = "DANMU_MSG"
-
-	//
-	SERVER_PORT = "2243"
+	danmuMSG     = "DANMU_MSG"
+	danmuGIFT    = "DANMU_GIFT"
+	danmuWelcome = "WELCOME"
 )
 
 type Message struct {
@@ -57,11 +56,11 @@ func NewMessage(b []byte, btype int) *Message {
 
 func (msg *Message) Encode() []byte {
 	buffer := bytes.NewBuffer([]byte{})
-	binary.Write(buffer, binary.BigEndian, int32(len(msg.body)+HEADER_LENGTH)) // write package length
-	binary.Write(buffer, binary.BigEndian, int16(HEADER_LENGTH))               // header length
-	binary.Write(buffer, binary.BigEndian, int16(DEVICE_TYPE))
+	binary.Write(buffer, binary.BigEndian, int32(len(msg.body)+headerLENGTH)) // write package length
+	binary.Write(buffer, binary.BigEndian, int16(headerLENGTH))               // header length
+	binary.Write(buffer, binary.BigEndian, int16(deviceTYPE))
 	binary.Write(buffer, binary.BigEndian, int32(msg.bodyType))
-	binary.Write(buffer, binary.BigEndian, int32(DEVICE))
+	binary.Write(buffer, binary.BigEndian, int32(device))
 	binary.Write(buffer, binary.BigEndian, msg.body)
 	return buffer.Bytes()
 }

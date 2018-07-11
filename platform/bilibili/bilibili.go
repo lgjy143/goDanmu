@@ -16,14 +16,14 @@ import (
 )
 
 type BiliClient struct {
-	roomId     int
+	roomID     int
 	roomName   string
-	showId     int
-	ownerUid   int
+	showID     int
+	ownerUID   int
 	ownerName  string
-	serverIp   string
+	serverIP   string
 	serverPort string
-	originUrl  string
+	originURL  string
 	liveStatus int
 	conn       net.Conn
 	wg         sync.WaitGroup
@@ -33,11 +33,11 @@ type BiliClient struct {
 var biliClient BiliClient
 
 func Bilibili(url string) {
-	if biliClient.originUrl == "" {
-		fmt.Println(biliClient.originUrl)
+	if biliClient.originURL == "" {
+		fmt.Println(biliClient.originURL)
 		biliClient = BiliClient{
-			originUrl: url,
-			roomId:    0,
+			originURL: url,
+			roomID:    0,
 			closeFlag: make(chan bool),
 		}
 		biliClient.getClientInfo()
@@ -50,7 +50,7 @@ func Bilibili(url string) {
 func (client *BiliClient) getClientInfo() {
 	var roomInitAddr = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"
 	reURL := regexp.MustCompile(`.*\/(\d+)$`)
-	roomArr := reURL.FindStringSubmatch(client.originUrl)
+	roomArr := reURL.FindStringSubmatch(client.originURL)
 	if len(roomArr) == 2 {
 		roomInitHTML := utils.Get(fmt.Sprintf(roomInitAddr, roomArr[1]))
 
@@ -62,29 +62,28 @@ func (client *BiliClient) getClientInfo() {
 
 		if resOk, _ := roomJSON.Get("msg").String(); resOk == "ok" {
 			roomData := roomJSON.Get("data")
-			client.roomId, _ = roomData.Get("room_id").Int()
-			client.ownerUid, _ = roomData.Get("uid").Int()
+			client.roomID, _ = roomData.Get("room_id").Int()
+			client.ownerUID, _ = roomData.Get("uid").Int()
 			client.liveStatus, _ = roomData.Get("live_status").Int()
 		} else {
 			log.Fatal("Room Init Failed")
 		}
 
 		log.Info("Get Barrage Servers Info")
-		dmIP, dmPort, err := getBarrageServer(client.roomId)
+		dmIP, dmPort, err := getBarrageServer(client.roomID)
 		if err != nil {
 			log.Fatal(err)
 		}
-		client.serverIp = dmIP
+		client.serverIP = dmIP
 		client.serverPort = dmPort
 
-		fmt.Println(client)
 		client.Connect()
 
 	}
 }
 
-func getBarrageServer(roomId int) (string, string, error) {
-	apiAddr := fmt.Sprintf("http://live.bilibili.com/api/player?id=cid:%d", roomId)
+func getBarrageServer(roomID int) (string, string, error) {
+	apiAddr := fmt.Sprintf("http://live.bilibili.com/api/player?id=cid:%d", roomID)
 	serverHTML := utils.Get(apiAddr)
 	regDmServer := regexp.MustCompile(`<dm_server>(.*)<\/dm_server>`)
 	regDmPort := regexp.MustCompile(`<dm_port>(\d+)<\/dm_port>`)
@@ -102,15 +101,15 @@ func getBarrageServer(roomId int) (string, string, error) {
  * 与B站弹幕服务器建立连接
  */
 func (client *BiliClient) Connect() error {
-	var danmuServerStr = client.serverIp + ":" + client.serverPort
+	var danmuServerStr = client.serverIP + ":" + client.serverPort
 	conn, err := net.DialTimeout("tcp", danmuServerStr, 5*time.Second)
 	if err != nil {
 		return err
 	}
-
+	log.Info("Connect Success")
 	client.conn = conn
 	// hand shake
-	client.conn.Write(NewHandshakeMessage(client.roomId, int(19052911)).Encode())
+	client.conn.Write(NewHandshakeMessage(client.roomID, int(19052911)).Encode())
 	client.wg.Add(2)
 	// heart
 	go client.heartbeat()
@@ -135,7 +134,7 @@ loop:
 				break loop
 			}
 		case <-tick:
-			heartbeatMsg := NewHeartbeatMessage(client.roomId, client.ownerUid)
+			heartbeatMsg := NewHeartbeatMessage(client.roomID, client.ownerUID)
 			fmt.Println("heart")
 			_, err := client.conn.Write(heartbeatMsg.Encode())
 			if err != nil {
@@ -162,7 +161,16 @@ loop:
 				break loop
 			}
 
-			fmt.Println(b, code)
+			fmt.Println(string(b))
+			// var jm map[string]interface{}
+			// if err := json.Unmarshal(b, &jm); err != nil {
+			// 	return nil, err
+			// }
+			// msgJSON, err = simplejson.NewJson(b)
+			// cmd, err := msgJSON.Get("cmd").String()
+			// if err == nil && cmd == danmuMSG {
+			// 	fmt.Println(string(b))
+			// }
 
 			// analize message
 		}
@@ -174,7 +182,7 @@ loop:
  */
 func (client *BiliClient) ReceiveMsg() ([]byte, int, error) {
 	buf := make([]byte, 512)
-	if _, err := io.ReadFull(client.conn, buf[:HEADER_LENGTH]); err != nil {
+	if _, err := io.ReadFull(client.conn, buf[:headerLENGTH]); err != nil {
 		return buf, -1, err
 	}
 
@@ -187,7 +195,7 @@ func (client *BiliClient) ReceiveMsg() ([]byte, int, error) {
 	// ignore buf[12:16]
 
 	// body content length
-	cl := pl - HEADER_LENGTH
+	cl := pl - headerLENGTH
 
 	if cl > 512 {
 		// expand buffer

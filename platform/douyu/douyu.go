@@ -38,6 +38,7 @@ func Douyu(url string) {
 		douyuClient = DouyuClient{
 			originUrl: url,
 			roomId:    0,
+			closeFlag: make(chan bool),
 		}
 		douyuClient.getClientInfo(288016)
 	}
